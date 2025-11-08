@@ -54,7 +54,7 @@ socket.on("connect", async () => {
 
   timer = setInterval(() => {
     if (socket.connected) {
-      emitWithAck("onFts-reload", { provider: "RKL", route: "T5800" });
+      emitWithAck("onFts-reload", { provider: "RKL", route: route });
     }
   }, 10_000);
 });
