@@ -1,75 +1,27 @@
-// index.js (ESM). If you use CommonJS, swap imports for require().
-import { io } from "socket.io-client";
-import { gunzipSync } from "node:zlib";
+import { Server } from "socket.io";
 
-const socket = io("https://rapidbus-socketio-avl.prasarana.com.my", {
-  path: "/socket.io/",
-  transports: ["websocket"],
-  extraHeaders: {
-    Origin: "https://myrapidbus.prasarana.com.my",
-  }
-});
+const PORT = 3000;
+const io = new Server(PORT, { cors: { origin: "*" } });
 
-function decodeMaybeGzip(x) {
-  if (typeof x === "string" && x.startsWith("H4sI")) {
-    try {
-      const buf = Buffer.from(x, "base64");
-      const txt = gunzipSync(buf).toString("utf8");
-      try { return JSON.parse(txt); } catch { return txt; }
-    } catch (e) {
-      return { __decodeError: e.message, rawPrefix: x.slice(0, 60) + "..." };
-    }
-  }
-  return x;
-}
+console.log(`🚀 Socket.IO server started on http://localhost:${PORT}`);
 
-function emitWithAck(event, payload) {
-  return new Promise((resolve) => {
-    try {
-      socket.timeout(3000).emit(event, payload, (err, ack) => {
-        resolve({ event, ok: !err, err, ack });
-      });
-    } catch (e) {
-      resolve({ event, ok: false, err: e, ack: null });
-    }
+io.on("connection", (socket) => {
+  socket.emit("connectionSuccess", { message: "You are connected to the server!" });
+  setInterval(() => {
+    const time = Date.now();
+    const now = new Date(time);
+    const dummyData = {
+      busNumber: "T5800" + 1,
+      stop: "Central Station",
+      lat: 3.1385 + Math.random() * 0.01,
+      lng: 101.693 + Math.random() * 0.01,
+      timestamp: now.toLocaleDateString() + " " + now.toLocaleTimeString(),
+    };
+    socket.emit("busLocationUpdate", dummyData);
+    console.log("📡 Emitted busLocationUpdate:", dummyData);
+  }, 50000);
+
+  socket.on("disconnect", (reason) => {
+    console.log("❌ Client disconnected:", socket.id, "Reason:", reason);
   });
-}
-
-let timer;
-
-socket.on("connect", async () => {
-  console.log("✅ Connected:", socket.id);
-
-  //make this dynamic
-  const route = "T5800";
-
-  const evt = "onFts-reload";
-  const payload = { provider: "RKL", route: route};
-
-  console.log(`testing:\n Event: ${evt} \n Payload: ${payload.provider}, ${payload.route}`)
-  const res = await emitWithAck(evt, payload);
-  console.log("↪️  sent", evt, payload, "→ ack:", res);
-
-  console.log("🕓 Waiting for server events…");
-
-  timer = setInterval(() => {
-    if (socket.connected) {
-      emitWithAck("onFts-reload", { provider: "RKL", route: route });
-    }
-  }, 10_000);
-});
-
-
-socket.onAny((event, ...args) => {
-  const decoded = args.map(decodeMaybeGzip);
-  console.log(`📩 Location: ${event}`);
-  console.dir(decoded, { depth: null });
-});
-
-socket.on("connect_error", (err) => {
-  console.error("connect_error:", err?.message, err?.data);
-});
-socket.on("disconnect", (reason) => {
-  console.log("❌ Disconnected:", reason);
-  if(timer) clearInterval(timer)
 });
